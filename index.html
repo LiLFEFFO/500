@@ -215,6 +215,15 @@ button{font-family:inherit}
   .btn.small{padding:6px 8px;font-size:10px}
   .overlay{padding:8px}
 }
+.auth-form{display:flex;flex-direction:column;gap:10px}
+.auth-form input{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:10px 12px;border-radius:10px;font-size:13px;width:100%}
+.auth-form input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,229,255,.15)}
+.auth-tabs{display:flex;gap:6px;margin-bottom:12px}
+.auth-tabs button{flex:1}
+.leaderboard-table{width:100%;border-collapse:collapse;font-size:12px}
+.leaderboard-table th{color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.leaderboard-table td{padding:7px 8px;border-bottom:1px solid rgba(30,46,70,.5)}
+.leaderboard-table tr.me{Background:rgba(0,229,255,.08)}
 @media(max-width:700px){.choice-grid{grid-template-columns:1fr}.difficulty-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.difficulty-grid{grid-template-columns:1fr}}
 </style>
@@ -223,6 +232,10 @@ button{font-family:inherit}
 <div class="topbar">
   <div class="logo"><i>500</i> <small>SLIDING ROGUELIKE</small></div>
   <div class="top-actions">
+    <span id="userBadge" class="badge accent" style="display:none"></span>
+    <button class="btn small" id="btnAuth">Login</button>
+    <button class="btn small ghost" id="btnLogout" style="display:none">Logout</button>
+    <button class="btn small" id="btnLeaderboard">Leaderboard</button>
     <button class="btn small" id="btnHow">How to Play</button>
     <button class="btn small" id="btnNew">New Run</button>
     <button class="btn small ghost" id="btnUndo" title="Undo last move (Z)">&#8617; Undo</button>
@@ -374,6 +387,51 @@ button{font-family:inherit}
   <div class="modal">
     <div class="modal-h"><h2>Event Cleared -- Choose Reward</h2><span class="badge ok">+ bonus</span></div>
     <div class="modal-b"><div class="choice-grid" id="rewardGrid"></div></div>
+  </div>
+</div>
+
+<!-- Auth overlay -->
+<div class="overlay" id="authOverlay">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-h"><h2 id="authTitle">Login</h2><button class="btn small" id="btnAuthClose">Close</button></div>
+    <div class="modal-b">
+      <div class="auth-tabs">
+        <button class="btn small primary" id="tabLogin">Login</button>
+        <button class="btn small" id="tabRegister">Register</button>
+      </div>
+      <div class="auth-form">
+        <input id="authUsername" placeholder="Username" autocomplete="username">
+        <input id="authEmail" placeholder="Email (register only)" autocomplete="email" style="display:none">
+        <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password">
+        <button class="btn primary" id="btnAuthSubmit">Login</button>
+        <div id="authMsg" style="font-size:12px;color:var(--muted);min-height:16px"></div>
+        <div style="font-size:11px;color:var(--muted)">Progress, best times and medals are saved to your account. Saves are automatic.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Leaderboard overlay -->
+<div class="overlay" id="leaderboardOverlay">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-h"><h2>Leaderboard & Medals</h2><button class="btn small" id="btnLbClose">Close</button></div>
+    <div class="modal-b">
+      <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn small primary lb-diff" data-lb="easy">Easy</button>
+        <button class="btn small lb-diff" data-lb="medium">Medium</button>
+        <button class="btn small lb-diff" data-lb="hard">Hard</button>
+        <button class="btn small lb-diff" data-lb="nightmare">Nightmare</button>
+        <span id="lbStatus" class="badge" style="margin-left:auto">--</span>
+      </div>
+      <div style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:12px">
+        <table class="leaderboard-table" id="lbTable"><thead><tr><th>#</th><th>Player</th><th>Best Time</th><th>Best Moves</th><th>Wins</th></tr></thead><tbody><tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading...</td></tr></tbody></table>
+      </div>
+      <div style="margin-top:12px">
+        <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Your Medals</div>
+        <div id="medalsList" class="bonus-list"><span style="color:var(--muted);font-size:12px">Login to see medals</span></div>
+        <div id="myRecords" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1171,6 +1229,15 @@ function applyReward(key){
   renderBoard();
 }
 
+async function saveRecord(diffKey, time_ms, moves){
+  const token=getToken();
+  if(!token) return;
+  try{
+    const r=await fetch('/api/record/win',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({difficulty:diffKey, time_ms, moves})});
+    const j=await r.json();
+    if(j.ok) log(`<span style="color:var(--ok)">Record saved for ${diffKey} -- ${fmtTime(time_ms/1000)} / ${moves} moves</span>`);
+  }catch(e){ console.warn('record save fail',e); }
+}
 function winGame(){
   const time=Math.floor((Date.now()-state.startTime)/1000);
   document.getElementById('winOverlay').classList.add('open');
@@ -1185,6 +1252,9 @@ function winGame(){
     <p style="color:var(--muted);font-size:12px;margin-top:10px">Try a higher difficulty. Nightmare (1-499, 20x25) is the ultimate challenge.</p>
   `;
   log(`<b style="color:var(--ok)">VICTORY!</b> Run ${DIFFS[state.diffKey].label} completed in ${state.moves} moves.`);
+  saveRecord(state.diffKey, time*1000, state.moves);
+  // clear save on win
+  if(getToken()) fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},body:JSON.stringify({difficulty:state.diffKey, board:null, moves:0, threat:0, checkpoint_idx:0, bonuses:[]})}).catch(()=>{});
 }
 
 // controls
@@ -1221,8 +1291,134 @@ function hint(){
   }
 }
 
+// --- AUTH + SAVE + LEADERBOARD ---
+function getToken(){ return localStorage.getItem('500_token'); }
+function setToken(t){ if(t) localStorage.setItem('500_token', t); }
+function clearToken(){ localStorage.removeItem('500_token'); localStorage.removeItem('500_user'); }
+function getUser(){ try{ return JSON.parse(localStorage.getItem('500_user')||'null'); }catch{return null;} }
+function updateAuthUI(){
+  const token=getToken(); const user=getUser();
+  const badge=document.getElementById('userBadge');
+  const btnAuth=document.getElementById('btnAuth');
+  const btnLogout=document.getElementById('btnLogout');
+  if(token && user){
+    badge.textContent=user.username; badge.style.display='inline-block';
+    btnAuth.style.display='none'; btnLogout.style.display='inline-block';
+  } else {
+    badge.style.display='none'; btnAuth.style.display='inline-block'; btnLogout.style.display='none';
+  }
+}
+async function apiSave(){
+  const token=getToken();
+  if(!token || !state) return;
+  try{
+    await fetch('/api/save',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body: JSON.stringify({
+        difficulty: state.diffKey,
+        board: state.board,
+        moves: state.moves,
+        threat: state.threat,
+        checkpoint_idx: state.checkpointIdx,
+        bonuses: state.bonuses
+      })
+    });
+  }catch(e){ console.warn('autosave fail',e); }
+}
+async function tryLoadSave(diffKey){
+  const token=getToken();
+  if(!token) return null;
+  try{
+    const r=await fetch('/api/save/'+diffKey,{headers:{'Authorization':'Bearer '+token}});
+    if(!r.ok) return null;
+    const data=await r.json();
+    if(!data || !data.board) return null;
+    return data;
+  }catch{ return null; }
+}
+let autosaveTimer=null;
+function startAutosave(){
+  if(autosaveTimer) clearInterval(autosaveTimer);
+  autosaveTimer=setInterval(apiSave, 30000);
+}
+window.addEventListener('beforeunload', ()=>{ if(getToken() && state) { try{ navigator.sendBeacon('/api/save', JSON.stringify({difficulty:state.diffKey, board:state.board, moves:state.moves, threat:state.threat, checkpoint_idx:state.checkpointIdx, bonuses:state.bonuses})); }catch{} } });
+async function loadLeaderboard(diff='easy'){
+  const lbTable=document.querySelector('#lbTable tbody');
+  const status=document.getElementById('lbStatus');
+  lbTable.innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--muted)">Loading...</td></tr>`;
+  try{
+    const r=await fetch('/api/leaderboard/'+diff);
+    const rows=await r.json();
+    if(!Array.isArray(rows) || rows.length===0){ lbTable.innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--muted)">No records yet</td></tr>`; status.textContent=diff.toUpperCase(); return; }
+    const me=getUser();
+    lbTable.innerHTML=rows.map((row,i)=>`<tr class="${me && row.username===me.username?'me':''}"><td>${i+1}</td><td>${row.username}</td><td>${row.best_time_ms? fmtTime(row.best_time_ms/1000): '--'}</td><td>${row.best_moves||'--'}</td><td>${row.wins||0}</td></tr>`).join('');
+    status.textContent=`${diff.toUpperCase()} -- ${rows.length} players`;
+  }catch(e){ lbTable.innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--bad)">Failed to load</td></tr>`; }
+  // medals + my records
+  const token=getToken();
+  if(token){
+    try{
+      const mr=await fetch('/api/medals',{headers:{'Authorization':'Bearer '+token}});
+      const medals=await mr.json();
+      const mEl=document.getElementById('medalsList');
+      if(Array.isArray(medals) && medals.length){ mEl.innerHTML=medals.map(m=>`<span class="bonus-chip">${m.code}</span>`).join(''); } else { mEl.innerHTML='<span style="color:var(--muted);font-size:12px">No medals yet -- win a run!</span>'; }
+    }catch{}
+    try{
+      const r2=await fetch('/api/leaderboard/'+diff);
+      const rows2=await r2.json();
+      const me2=getUser();
+      const mine=rows2.find(rw=> me2 && rw.username===me2.username);
+      document.getElementById('myRecords').textContent = mine ? `Your best: ${fmtTime(mine.best_time_ms/1000)} / ${mine.best_moves} moves (${mine.wins} wins)` : 'No personal record for this difficulty yet.';
+    }catch{}
+  }
+}
+
+// auth modal logic
+let authMode='login';
+function setAuthMode(m){
+  authMode=m;
+  document.getElementById('tabLogin').className = m==='login' ? 'btn small primary' : 'btn small';
+  document.getElementById('tabRegister').className = m==='register' ? 'btn small primary' : 'btn small';
+  document.getElementById('authTitle').textContent = m==='login' ? 'Login' : 'Register';
+  document.getElementById('btnAuthSubmit').textContent = m==='login' ? 'Login' : 'Create Account';
+  document.getElementById('authEmail').style.display = m==='register' ? 'block' : 'none';
+  document.getElementById('authMsg').textContent='';
+}
+
 // UI wiring
-document.querySelectorAll('.diff-card').forEach(c=>c.addEventListener('click',()=>startRun(c.dataset.diff)));
+document.querySelectorAll('.diff-card').forEach(c=>c.addEventListener('click',async ()=>{
+  const diff=c.dataset.diff;
+  // try to resume save
+  const save = await tryLoadSave(diff);
+  if(save && save.board && Array.isArray(JSON.parse(save.board||'[]'))){
+    // legacy: board stored as JSON string
+  }
+  if(save && save.board){
+    let boardData = save.board;
+    if(typeof boardData==='string') try{ boardData=JSON.parse(boardData); }catch{}
+    if(boardData && Array.isArray(boardData) && boardData.length){
+      if(confirm(`Found a saved run for ${diff.toUpperCase()} (${save.moves} moves, ${save.threat}% threat). Resume?`)){
+        state=newState(diff);
+        state.board=boardData;
+        state.emptyIdx = boardData.indexOf(null);
+        if(state.emptyIdx===-1) state.emptyIdx=state.board.length-1;
+        state.moves=save.moves||0;
+        state.threat=save.threat||0;
+        state.checkpointIdx=save.checkpoint_idx||0;
+        try{ state.bonuses= typeof save.bonuses==='string'? JSON.parse(save.bonuses): (save.bonuses||[]);}catch{ state.bonuses=[]; }
+        state.startTime=Date.now();
+        renderBoard();
+        document.getElementById('startOverlay').classList.remove('open');
+        ['eventOverlay','bossOverlay','rewardOverlay','winOverlay'].forEach(id=>document.getElementById(id).classList.remove('open'));
+        log(`Resumed saved run <b>${DIFFS[diff].label}</b> -- ${state.moves} moves.`);
+        startAutosave();
+        return;
+      }
+    }
+  }
+  startRun(diff); startAutosave();
+}));
 document.getElementById('btnNew').addEventListener('click',()=>document.getElementById('startOverlay').classList.add('open'));
 document.getElementById('btnHow').addEventListener('click',()=>document.getElementById('howOverlay').classList.add('open'));
 document.getElementById('btnHowClose').addEventListener('click',()=>document.getElementById('howOverlay').classList.remove('open'));
@@ -1272,8 +1468,53 @@ document.getElementById('eventOverlay').addEventListener('click',e=>{ if(e.targe
 document.getElementById('bossOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) clearBoss();});
 document.getElementById('rewardOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) e.currentTarget.classList.remove('open')});
 
+// auth wiring
+document.getElementById('btnAuth').addEventListener('click',()=>{ setAuthMode('login'); document.getElementById('authOverlay').classList.add('open'); });
+document.getElementById('btnAuthClose').addEventListener('click',()=> document.getElementById('authOverlay').classList.remove('open'));
+document.getElementById('authOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) e.currentTarget.classList.remove('open'); });
+document.getElementById('tabLogin').addEventListener('click',()=> setAuthMode('login'));
+document.getElementById('tabRegister').addEventListener('click',()=> setAuthMode('register'));
+document.getElementById('btnLogout').addEventListener('click',()=>{ clearToken(); updateAuthUI(); log('Logged out.'); });
+document.getElementById('btnAuthSubmit').addEventListener('click', async ()=>{
+  const username=document.getElementById('authUsername').value.trim();
+  const email=document.getElementById('authEmail').value.trim();
+  const password=document.getElementById('authPassword').value;
+  const msg=document.getElementById('authMsg');
+  if(!username||!password){ msg.textContent='Username and password required'; msg.style.color='var(--bad)'; return; }
+  if(authMode==='register' && !email){ msg.textContent='Email required for register'; msg.style.color='var(--bad)'; return; }
+  msg.textContent='Loading...'; msg.style.color='var(--muted)';
+  try{
+    const url = authMode==='login' ? '/api/auth/login' : '/api/auth/register';
+    const body = authMode==='login' ? {username,password} : {username,email,password};
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!r.ok){ msg.textContent=j.error||'Error'; msg.style.color='var(--bad)'; return; }
+    setToken(j.token); localStorage.setItem('500_user', JSON.stringify(j.user));
+    document.getElementById('authOverlay').classList.remove('open');
+    updateAuthUI();
+    log(`Welcome, <b>${j.user.username}</b>! Progress will be saved.`);
+  }catch(e){ msg.textContent='Network error'; msg.style.color='var(--bad)'; }
+});
+document.getElementById('btnLeaderboard').addEventListener('click',()=>{ document.getElementById('leaderboardOverlay').classList.add('open'); loadLeaderboard('easy'); });
+document.getElementById('btnLbClose').addEventListener('click',()=> document.getElementById('leaderboardOverlay').classList.remove('open'));
+document.getElementById('leaderboardOverlay').addEventListener('click',e=>{ if(e.target===e.currentTarget) e.currentTarget.classList.remove('open'); });
+document.querySelectorAll('.lb-diff').forEach(b=> b.addEventListener('click',()=>{
+  document.querySelectorAll('.lb-diff').forEach(x=>x.className='btn small lb-diff');
+  b.className='btn small primary lb-diff';
+  loadLeaderboard(b.dataset.lb);
+}));
+
+// hook autosave on moves
+const _origTryMove = tryMove;
+tryMove = function(idx){
+  const r=_origTryMove(idx);
+  if(getToken() && state && state.moves % 5 === 0) apiSave();
+  return r;
+};
+
+updateAuthUI();
 // auto start demo? keep start screen
-log('Welcome to 500. Choose a difficulty to start.');
+log('Welcome to 500. Choose a difficulty to start. ' + (getToken() ? 'Logged in as '+ (getUser()?.username||'') + '.' : 'Login to save progress and compete globally.'));
 </script>
 </body>
 </html>
