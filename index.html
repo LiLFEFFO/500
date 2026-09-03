@@ -1257,11 +1257,12 @@ function winGame(){
   if(getToken()) fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+getToken()},body:JSON.stringify({difficulty:state.diffKey, board:null, moves:0, threat:0, checkpoint_idx:0, bonuses:[]})}).catch(()=>{});
 }
 
-// controls
+// controls - ignore when typing in inputs
 document.addEventListener('keydown',e=>{
+  if(e.target.closest && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
   if(!state) return;
-  if(e.key.toLowerCase()==='z'){ undo(); }
-  if(e.key.toLowerCase()==='h'){ hint(); }
+  if(e.key.toLowerCase()==='z'){ undo(); return; }
+  if(e.key.toLowerCase()==='h'){ hint(); return; }
   if(eventState && eventState.active) return;
   if(document.querySelector('.overlay.open') && !document.getElementById('startOverlay').classList.contains('open')) {
     if(document.getElementById('bossOverlay').classList.contains('open')) return;
