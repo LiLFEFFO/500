@@ -1392,9 +1392,6 @@ document.querySelectorAll('.diff-card').forEach(c=>c.addEventListener('click',as
   const diff=c.dataset.diff;
   // try to resume save
   const save = await tryLoadSave(diff);
-  if(save && save.board && Array.isArray(JSON.parse(save.board||'[]'))){
-    // legacy: board stored as JSON string
-  }
   if(save && save.board){
     let boardData = save.board;
     if(typeof boardData==='string') try{ boardData=JSON.parse(boardData); }catch{}
